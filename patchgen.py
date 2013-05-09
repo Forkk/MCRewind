@@ -142,7 +142,7 @@ def download_version(mcversion, dest, max_tries = 3):
 
 def execute_bsdiff(oldfile, newfile, patchfile):
 	"""Runs bsdiff with the given arguments. Returns False on failure."""
-	if call([ bsdiff_path, oldfile, newfile, patchfile ]):
+	if subprocess.call([ bsdiff_path, oldfile, newfile, patchfile ]):
 		return False
 	else:
 		return True
