@@ -34,6 +34,16 @@ import subprocess
 
 import fsutils
 
+from Queue import Queue
+from threading import Thread
+
+# The number of worker threads that will be generating patches.
+worker_threads = 1
+
+if len(sys.argv) >= 2 and int(sys.argv[1]) > 0:
+	worker_threads = int(sys.argv[1])
+
+print "Running on %i threads." % worker_threads
 
 
 # URL for Mojang's version list.
@@ -196,22 +206,34 @@ index = {
 }
 
 
-# Generate a patch for each file in the jars folder.
+# Load all the patches into a queue.
 print "Generating patches..."
+patch_queue = Queue()
 for jarfile in os.listdir(jar_dir_path):
-	print "Generating patch for " + jarfile
 	fname, ext = os.path.splitext(os.path.basename(jarfile))
 
 	if ext != ".jar":
 		print "Skipping " + jarfile + " because it doesn't look like a jar file."
 		continue
 	
-	patch_info = generate_patch(os.path.join(jar_dir_path, jarfile), 
-			os.path.join(output_dir_path, "patches", fname + ".patch"))
-	index["versions"].append(patch_info)
-print "Done"
+	patch_queue.put(os.path.join(jar_dir_path, jarfile))
 
-	
+# Function for generating a patch. This will be run on a thread.
+def gen_patch():
+	while not patch_queue.empty():
+		jarfile = patch_queue.get()
+		fname, ext = os.path.splitext(os.path.basename(jarfile))
+		print "Generating patch for " + fname
+		index["versions"].append(generate_patch(jarfile, os.path.join(output_dir_path, "patches", fname + ".patch")))
+		patch_queue.task_done()
+
+for i in range(worker_threads):
+	t = Thread(target = gen_patch)
+	t.daemon = True
+	t.start()
+
+patch_queue.join()
+
 # Dump the index to output.
 index_file = open(os.path.join(output_dir_path, "mcrw-index-v1.json"), "wb")
 index_file.write(json.dumps(index))
