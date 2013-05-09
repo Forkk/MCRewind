@@ -1,0 +1,18 @@
+# Sublime Text Project Files
+*.sublime-*
+
+
+# Python Stuff
+*.pyc
+
+
+# Folders
+
+# Folder containing jars to generate patches for.
+jars/
+
+# Output folder where patches will be saved to.
+output/
+
+# Temporary folder where temporary things are kept.
+tmp/
