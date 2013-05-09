@@ -30,7 +30,7 @@ import os.path
 import platform
 import sys
 
-from subprocess import call
+import subprocess
 
 import fsutils
 
@@ -58,13 +58,16 @@ if os.name == "nt":
 elif os.name == "posix":
 	# In Posix systems, we'll try to find bsdiff installed on the system somewhere.
 	print "Trying to find bsdiff..."
-	result = ""
-	if not call("which bsdiff", result):
-		print "Found bsd`iff at " + result
-		bsdiff_path = result
-	else:
+
+	proc = subprocess.Popen([ "which", "bsdiff" ], stdout = subprocess.PIPE)
+	out, err = proc.communicate()
+
+	print "Found bsdiff at " + out
+	bsdiff_path = out
+	if len(bsdiff_path) == 0:
 		print "Could not find bsdiff. Aborting."
 		exit(1)
+
 
 else:
 	print "Your operating system is not supported. Aborting."
