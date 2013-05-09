@@ -30,11 +30,9 @@ import os
 import os.path
 import platform
 import sys
+import shutil
 
 import subprocess
-
-import fsutils
-
 
 
 # URL for Mojang's version list.
@@ -176,11 +174,11 @@ if not os.path.exists(jar_dir_path):
 	print "No jars directory found at " + jar_dir_path
 
 if os.path.exists(temp_dir_path):
-	fsutils.remove_recursive(temp_dir_path)
+	shutil.rmtree(temp_dir_path)
 os.mkdir(temp_dir_path)
 
 if os.path.exists(output_dir_path):
-	fsutils.remove_recursive(output_dir_path)
+	shutil.rmtree(output_dir_path)
 os.mkdir(output_dir_path)
 os.mkdir(os.path.join(output_dir_path, "patches"))
 
