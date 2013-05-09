@@ -62,8 +62,8 @@ elif os.name == "posix":
 	proc = subprocess.Popen([ "which", "bsdiff" ], stdout = subprocess.PIPE)
 	out, err = proc.communicate()
 
-	print "Found bsdiff at " + out
-	bsdiff_path = out
+	bsdiff_path = out.strip()
+	print "Found bsdiff at " + bsdiff_path
 	if len(bsdiff_path) == 0:
 		print "Could not find bsdiff. Aborting."
 		exit(1)
