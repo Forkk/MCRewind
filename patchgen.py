@@ -28,7 +28,6 @@ from urlparse import urljoin
 
 import os
 import os.path
-import platform
 import sys
 import shutil
 
