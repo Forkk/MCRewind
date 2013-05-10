@@ -58,7 +58,7 @@ def determine_latest_version(mojang_versions_url):
 	data = json.loads(json_str)
 
 	return data["latest"]["release"]
-	
+
 
 def is_valid_md5(md5str):
 	return len(md5str) == 32 and re.findall(r"[a-fA-F\d]", md5str)
@@ -405,7 +405,7 @@ def main(argv):
 
 	if not (new_version or args.force or args.offline):
 		print("No new version found, not doing anything.")
-		return 1
+		return 0
 
 	# Yes, this else is unnecessary, but it makes it easier to tell what's going on here.
 	else:
