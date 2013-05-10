@@ -58,15 +58,7 @@ def determine_latest_version(mojang_versions_url):
 	data = json.loads(json_str)
 
 	return data["latest"]["release"]
-
-
-def execute_bsdiff(oldfile, newfile, patchfile):
-	"""Runs bsdiff with the given arguments. Returns False on failure."""
-	if subprocess.call([ bsdiff_path, oldfile, newfile, patchfile ]):
-		return False
-	else:
-		return True
-
+	
 
 def is_valid_md5(md5str):
 	return len(md5str) == 32 and re.findall(r"[a-fA-F\d]", md5str)
