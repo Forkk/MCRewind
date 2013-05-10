@@ -6,6 +6,11 @@ MCRewind is an open-source project whose goal is to replace the now-defunct MCNo
 It consists of a set of scripts for generating patches to downgrade the latest version of Minecraft to older versions. In addition to generating these patches, it also generates an 'index' file containing information about the generated patches. The index and patches can then be hosted on a webserver, where clients can read the index and download / use the patches.
 
 
+Dependencies
+------------
+
+The patch generator needs the bsdiff4 python extension module. https://pypi.python.org/pypi/bsdiff4
+
 
 License
 =======
