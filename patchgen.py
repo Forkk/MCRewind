@@ -154,17 +154,20 @@ def download_version(mcversion, dest, max_tries = 3):
 			exit(1)
 
 
-def generate_patch(oldjar_path, patch_dest):
+def generate_patch(oldjar_path, patch_dest, latest_jar_path = ""):
 	"""
 	Generates a patch from the latest jar to the file at oldjar_path.
 	The patch will be saved to patch_dest.
 	Returns a dict containing information about the version.
 	"""
 
+	if len(latest_jar_path) <= 0:
+		latest_jar_path = os.path.join(temp_dir_path, "latest.jar")
+
 	vname, ext = os.path.splitext(os.path.basename(oldjar_path))
 
 	# Generate the patch...
-	if not execute_bsdiff(os.path.join(temp_dir_path, "latest.jar"), oldjar_path, patch_dest):
+	if not execute_bsdiff(latest_jar_path, oldjar_path, patch_dest):
 		print "bsdiff failed to execute. Aborting."
 		exit(1)
 
@@ -176,7 +179,14 @@ def generate_patch(oldjar_path, patch_dest):
 	return { "name": vname, "md5": m.hexdigest() }
 
 
-def generate_patches(worker_threads = 1):
+def generate_patches(worker_threads = 1, latest_jar_path = ""):
+	"""
+	Generates patches.
+
+	worker_threads specifies how many bsdiff threads to run at once.
+	latest_jar_path specifies a path to the latest Minecraft jar file. If this is unspecified, the latest version will be downloaded automatically.
+	"""
+
 	if not os.path.exists(jar_dir_path):
 		print "No jars directory found at " + jar_dir_path
 
@@ -196,7 +206,10 @@ def generate_patches(worker_threads = 1):
 	latest_mc_version = determine_latest_version()
 
 	print "Downloading latest minecraft.jar..."
-	download_version(latest_mc_version, os.path.join(temp_dir_path, "latest.jar"))
+
+	if len(latest_jar_path) <= 0:
+		latest_jar_path = os.path.join(temp_dir_path, "latest.jar")
+		download_version(latest_mc_version, latest_jar_path)
 
 
 	index = {
@@ -219,16 +232,16 @@ def generate_patches(worker_threads = 1):
 		patch_queue.put(os.path.join(jar_dir_path, jarfile))
 
 	# Function for generating a patch. This will be run on a thread.
-	def gen_patch():
+	def gen_patch(latest_path):
 		while not patch_queue.empty():
 			jarfile = patch_queue.get()
 			fname, ext = os.path.splitext(os.path.basename(jarfile))
 			print "Generating patch for " + fname
-			index["versions"].append(generate_patch(jarfile, os.path.join(output_dir_path, "patches", fname + ".patch")))
+			index["versions"].append(generate_patch(jarfile, os.path.join(output_dir_path, "patches", fname + ".patch"), latest_path))
 			patch_queue.task_done()
 
 	for i in range(worker_threads):
-		t = Thread(target = gen_patch)
+		t = Thread(target = gen_patch, args = ( latest_jar_path, ))
 		t.daemon = True
 		t.start()
 
@@ -258,13 +271,19 @@ def new_version_available():
 	return determine_latest_version() != index["mcversion"]
 
 def download_new_jar():
-	"""Downloads the latest jar from Mojang's version list into the "jars" folder."""
+	"""
+	Downloads the latest jar from Mojang's version list into the "jars" folder.
+	Returns a path to the downloaded jar.
+	"""
 	if not os.path.exists(jar_dir_path):
 		os.mkdir(jar_dir_path)
 
 	latest_version = determine_latest_version()
 	print "Downloading new jar file..."
-	download_version(latest_version, os.path.join(jar_dir_path, latest_version + ".jar"))
+	dest = os.path.join(jar_dir_path, latest_version + ".jar")
+	download_version(latest_version, dest)
+	return dest
+
 
 if __name__ == "__main__":
 	# The number of worker threads that will be generating patches.
@@ -285,10 +304,12 @@ if __name__ == "__main__":
 
 	new_version = new_version_available()
 
+	latest_jar_path	= ""
+
 	if new_version:
-		download_new_jar()
+		latest_jar_path = download_new_jar()
 
 	if new_version or force_gen:
-		generate_patches(wthreads)
+		generate_patches(wthreads, latest_jar_path)
 	else:
 		print "No new version found. Not doing anything. (to force generating patches, use -f)"
