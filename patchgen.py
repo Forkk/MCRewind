@@ -37,14 +37,6 @@ import fsutils
 from Queue import Queue
 from threading import Thread
 
-# The number of worker threads that will be generating patches.
-worker_threads = 1
-
-if len(sys.argv) >= 2 and int(sys.argv[1]) > 0:
-	worker_threads = int(sys.argv[1])
-
-print "Running on %i threads." % worker_threads
-
 
 # URL for Mojang's version list.
 version_list_url = "http://s3.amazonaws.com/Minecraft.Download/versions/"
@@ -57,6 +49,10 @@ jar_dir_path = "jars"
 
 # Path to the output folder.
 output_dir_path = "output"
+
+
+# Filename for the index file.
+index_file_name = "mcrw-index-v1.json"
 
 
 # Determine the path to bsdiff
@@ -86,7 +82,6 @@ else:
 print "bsdiff path is " + bsdiff_path
 
 
-
 def determine_latest_version():
 	"""Reads from Mojang's version list and returns the name of the latest version of Minecraft."""
 
@@ -96,6 +91,14 @@ def determine_latest_version():
 	data = json.loads(json_str)
 
 	return data["latest"]["release"]
+
+
+def execute_bsdiff(oldfile, newfile, patchfile):
+	"""Runs bsdiff with the given arguments. Returns False on failure."""
+	if subprocess.call([ bsdiff_path, oldfile, newfile, patchfile ]):
+		return False
+	else:
+		return True
 
 
 def download_version(mcversion, dest, max_tries = 3):
@@ -150,14 +153,6 @@ def download_version(mcversion, dest, max_tries = 3):
 			exit(1)
 
 
-def execute_bsdiff(oldfile, newfile, patchfile):
-	"""Runs bsdiff with the given arguments. Returns False on failure."""
-	if subprocess.call([ bsdiff_path, oldfile, newfile, patchfile ]):
-		return False
-	else:
-		return True
-
-
 def generate_patch(oldjar_path, patch_dest):
 	"""
 	Generates a patch from the latest jar to the file at oldjar_path.
@@ -180,61 +175,115 @@ def generate_patch(oldjar_path, patch_dest):
 	return { "name": vname, "md5": m.hexdigest() }
 
 
+def generate_patches(worker_threads = 1):
+	if not os.path.exists(jar_dir_path):
+		print "No jars directory found at " + jar_dir_path
 
-if not os.path.exists(jar_dir_path):
-	print "No jars directory found at " + jar_dir_path
+	if os.path.exists(temp_dir_path):
+		fsutils.remove_recursive(temp_dir_path)
+	os.mkdir(temp_dir_path)
 
-if os.path.exists(temp_dir_path):
-	fsutils.remove_recursive(temp_dir_path)
-os.mkdir(temp_dir_path)
+	if os.path.exists(output_dir_path):
+		fsutils.remove_recursive(output_dir_path)
+	os.mkdir(output_dir_path)
+	os.mkdir(os.path.join(output_dir_path, "patches"))
 
-if os.path.exists(output_dir_path):
-	fsutils.remove_recursive(output_dir_path)
-os.mkdir(output_dir_path)
-os.mkdir(os.path.join(output_dir_path, "patches"))
+	latest_mc_version = determine_latest_version()
 
-latest_mc_version = determine_latest_version()
-
-print "Downloading latest minecraft.jar..."
-download_version(latest_mc_version, os.path.join(temp_dir_path, "latest.jar"))
-
-
-index = {
-	"mcversion": latest_mc_version,
-	"versions": [],
-	"listversion": 1,
-}
+	print "Downloading latest minecraft.jar..."
+	download_version(latest_mc_version, os.path.join(temp_dir_path, "latest.jar"))
 
 
-# Load all the patches into a queue.
-print "Generating patches..."
-patch_queue = Queue()
-for jarfile in os.listdir(jar_dir_path):
-	fname, ext = os.path.splitext(os.path.basename(jarfile))
+	index = {
+		"mcversion": latest_mc_version,
+		"versions": [],
+		"listversion": 1,
+	}
 
-	if ext != ".jar":
-		print "Skipping " + jarfile + " because it doesn't look like a jar file."
-		continue
-	
-	patch_queue.put(os.path.join(jar_dir_path, jarfile))
 
-# Function for generating a patch. This will be run on a thread.
-def gen_patch():
-	while not patch_queue.empty():
-		jarfile = patch_queue.get()
+	# Load all the patches into a queue.
+	print "Generating patches..."
+	patch_queue = Queue()
+	for jarfile in os.listdir(jar_dir_path):
 		fname, ext = os.path.splitext(os.path.basename(jarfile))
-		print "Generating patch for " + fname
-		index["versions"].append(generate_patch(jarfile, os.path.join(output_dir_path, "patches", fname + ".patch")))
-		patch_queue.task_done()
 
-for i in range(worker_threads):
-	t = Thread(target = gen_patch)
-	t.daemon = True
-	t.start()
+		if ext != ".jar":
+			print "Skipping " + jarfile + " because it doesn't look like a jar file."
+			continue
+		
+		patch_queue.put(os.path.join(jar_dir_path, jarfile))
 
-patch_queue.join()
+	# Function for generating a patch. This will be run on a thread.
+	def gen_patch():
+		while not patch_queue.empty():
+			jarfile = patch_queue.get()
+			fname, ext = os.path.splitext(os.path.basename(jarfile))
+			print "Generating patch for " + fname
+			index["versions"].append(generate_patch(jarfile, os.path.join(output_dir_path, "patches", fname + ".patch")))
+			patch_queue.task_done()
 
-# Dump the index to output.
-index_file = open(os.path.join(output_dir_path, "mcrw-index-v1.json"), "wb")
-index_file.write(json.dumps(index))
-index_file.close()
+	for i in range(worker_threads):
+		t = Thread(target = gen_patch)
+		t.daemon = True
+		t.start()
+
+	patch_queue.join()
+
+	# Dump the index to output.
+	index_file = open(os.path.join(output_dir_path, index_file_name), "wb")
+	index_file.write(json.dumps(index))
+	index_file.close()
+
+
+def new_version_available():
+	"""
+	Returns True if the "release" version specified on Mojang's version list is different from the "mcversion" specified in the index file.
+	If there is no index file in the output directory, returns True anyways.
+	"""
+	json_str = ""
+	try:
+		index_file = open(os.path.join(output_dir_path, index_file_name), "r")
+		json_str = index_file.read()
+		index_file.close()
+	except IOError:
+		print "No valid index found. Assuming new version is available."
+		return True
+
+	index = json.loads(json_str)
+	return determine_latest_version() != index["mcversion"]
+
+def download_new_jar():
+	"""Downloads the latest jar from Mojang's version list into the "jars" folder."""
+	if not os.path.exists(jar_dir_path):
+		os.mkdir(jar_dir_path)
+
+	latest_version = determine_latest_version()
+	print "Downloading new jar file..."
+	download_version(latest_version, os.path.join(jar_dir_path, latest_version + ".jar"))
+
+if __name__ == "__main__":
+	# The number of worker threads that will be generating patches.
+	wthreads = 1
+
+	force_gen = False
+
+	thread_arg_regex = re.compile(r"^-j([0-9]+)$")
+	thread_args = [int(thread_arg_regex.search(arg).group(1)) for arg in sys.argv if thread_arg_regex.match(arg)]
+
+	if len(thread_args) > 0:
+		wthreads = thread_args[0]
+
+	if "-f" in sys.argv:
+		force_gen = True
+
+	print "Running on %i threads." % wthreads
+
+	new_version = new_version_available()
+
+	if new_version:
+		download_new_jar()
+
+	if new_version or force_gen:
+		generate_patches(wthreads)
+	else:
+		print "No new version found. Not doing anything. (to force generating patches, use -f)"
